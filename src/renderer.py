@@ -16,6 +16,8 @@ def _run(cmd, cwd=None):
 
 
 def _drawtext(texto: str, build_dir: str, idx: int) -> str:
+    """Escribe el texto a un archivo (evita el infierno de escapes) y devuelve
+    el fragmento de filtro drawtext que lo dibuja centrado abajo-centro."""
     txt_path = os.path.join(build_dir, f"txt_{idx}.txt")
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write(texto.upper())
@@ -40,40 +42,57 @@ def _fade(dur: float) -> str:
     return f"fade=t=in:st=0:d={d},fade=t=out:st={max(0.0, dur - d):.2f}:d={d}"
 
 
+def _suffix(seg: dict, build_dir: str, idx: int) -> str:
+    """Cola de filtros común (texto, fundido, formato) que se encadena al final."""
+    parts = []
+    if seg["texto"]:
+        parts.append(_drawtext(seg["texto"], build_dir, idx))
+    if seg["transicion"] == "fade":
+        parts.append(_fade(seg["dur"]))
+    parts.append("setsar=1")
+    parts.append("format=yuv420p")
+    return "," + ",".join(parts)
+
+
+def _contain_blur(src: str) -> str:
+    return (
+        f"[{src}]split=2[bg][fg];"
+        f"[bg]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
+        f"gblur=sigma=20[bgb];"
+        f"[fg]scale={W}:{H}:force_original_aspect_ratio=decrease[fgs];"
+        f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2"
+    )
+
+
 def _render_segment(seg: dict, build_dir: str, idx: int) -> str:
     """Normaliza un segmento a build_dir/seg_{idx}.mp4 (video sin audio)."""
     out = f"seg_{idx}.mp4"
     dur = seg["dur"]
     frames = max(1, int(round(dur * FPS)))
-    chain = []
+    inicio = float(seg.get("inicio") or 0.0)
+    suffix = _suffix(seg, build_dir, idx)
 
     if seg["kind"] == "image":
+        inputs = ["-loop", "1", "-i", seg["path"]]
         if seg["efecto"] == "kenburns":
-            chain.append(
-                f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
+            # Foto a pantalla completa con zoom lento (aquí sí llena recortando,
+            # que en fotos se ve bien).
+            graph = (
+                f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
                 f"scale={W*2}:{H*2},"
                 f"zoompan=z='min(zoom+0.0009,1.30)':d={frames}:"
                 f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={W}x{H}:fps={FPS}"
+                f"{suffix}[v]"
             )
         else:
-            chain.append(
-                f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}")
-        inputs = ["-loop", "1", "-i", seg["path"]]
+            graph = f"{_contain_blur('0:v')},fps={FPS}{suffix}[v]"
     else:  # video
-        chain.append(
-            f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},fps={FPS}")
-        inputs = ["-i", seg["path"]]
-
-    if seg["texto"]:
-        chain.append(_drawtext(seg["texto"], build_dir, idx))
-    if seg["transicion"] == "fade":
-        chain.append(_fade(dur))
-    chain.append("setsar=1")
-    chain.append("format=yuv420p")
-    vf = ",".join(chain)
+        # -ss ANTES de -i: salta rápido al punto relevante que se eligió.
+        inputs = (["-ss", f"{inicio:.2f}"] if inicio > 0 else []) + ["-i", seg["path"]]
+        graph = f"{_contain_blur('0:v')},fps={FPS}{suffix}[v]"
 
     cmd = ["ffmpeg", "-y", *inputs, "-t", f"{dur}",
-           "-vf", vf, "-r", f"{FPS}",
+           "-filter_complex", graph, "-map", "[v]", "-r", f"{FPS}",
            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
            "-pix_fmt", "yuv420p", "-an", out]
     _run(cmd, cwd=build_dir)
@@ -91,6 +110,10 @@ def _concat(seg_files: list, build_dir: str) -> str:
 
 
 def _audio_graph(plan: dict, build_dir: str, voice_rel: str):
+    """Devuelve (inputs_extra, filtro_audio, tiene_audio).
+
+    voice_rel: nombre relativo (en build_dir) del mp3 de voz ya listo, o None.
+    """
     music = plan["musica"]
     music_path = music["path"]
     vol = music["volumen"]
@@ -105,6 +128,7 @@ def _audio_graph(plan: dict, build_dir: str, voice_rel: str):
         inputs += ["-i", music_path]
 
     if have_voice and have_music:
+        # video=0, voz=1, música=2
         filt = (f"[2:a]volume={vol},aloop=loop=-1:size=2e9[m];"
                 f"[1:a][m]amix=inputs=2:duration=longest:dropout_transition=0[a]")
     elif have_voice:

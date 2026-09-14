@@ -76,6 +76,7 @@ Devuelve SOLO un objeto JSON válido (sin markdown ni texto extra) con esta form
   "segmentos": [
     {{
       "asset": "<nombre EXACTO de una imagen o video de la lista>",
+      "inicio": <para VIDEOS: segundo del clip donde empezar a tomar, para quedarte con lo relevante; para imágenes: 0>,
       "dur": <segundos que dura este segmento>,
       "efecto": "kenburns" | "none",
       "texto": "<texto corto para mostrar encima, o null>",
@@ -87,8 +88,16 @@ Devuelve SOLO un objeto JSON válido (sin markdown ni texto extra) con esta form
 Reglas:
 - Usa SOLO nombres de esta lista: {nombres_validos}
 - La suma de los "dur" de los segmentos debe acercarse a "duracion_total".
-- Para imágenes usa efecto "kenburns" (zoom lento); para videos, "none" o recorta.
-- "texto" breve (máx. 8 palabras), tipo rótulo; no llenes de texto todos los segmentos.
+- DURACIÓN: no hagas cortes demasiado breves. Si un video dura varios segundos o
+  minutos, toma trozos generosos (p. ej. 6 a 20 s cada uno) para que se aprecie;
+  el reel puede durar de 20 s hasta 2 minutos si el material lo permite.
+- "inicio": para cada VIDEO elige el segundo donde empieza lo más representativo
+  (evita el arranque si suele ser preparación o cámara temblorosa); nunca pongas
+  inicio + dur más allá de la duración real del clip. Para imágenes, inicio = 0.
+- Un mismo video puede usarse en VARIOS segmentos con distinto "inicio" para
+  mostrar diferentes momentos.
+- Para imágenes usa efecto "kenburns" (zoom lento); para videos, "none".
+- "texto" breve (máx. 8 palabras), tipo rótulo; no en todos los segmentos.
 - Respeta el orden y las ideas que pidió la usuaria."""
 
     last = None

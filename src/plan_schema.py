@@ -1,10 +1,3 @@
-"""Valida y normaliza el plan que devolvió la IA antes de renderizar.
-
-La IA se equivoca a veces (nombra un archivo que no existe, pone duraciones
-raras). Aquí lo dejamos SIEMPRE renderizable, o damos un error claro. También
-es lo que respalda el "modo aprobación": la app muestra este plan ya saneado y
-ella lo edita.
-"""
 from . import inventory as inv
 
 EFECTOS = ("kenburns", "none")
@@ -40,18 +33,30 @@ def normalize(plan: dict, inventory: list) -> dict:
             dur = float(dur)
         except (TypeError, ValueError):
             dur = 4.0
-        dur = max(1.0, min(dur, 20.0))
-        # Si es video más corto que 'dur', ajusta a su duración real.
+        dur = max(1.0, min(dur, 60.0))
+        # Punto de inicio dentro del clip (para quedarse con lo relevante).
+        inicio = s.get("inicio", 0)
+        try:
+            inicio = float(inicio)
+        except (TypeError, ValueError):
+            inicio = 0.0
+        inicio = max(0.0, inicio)
+        # Si es video, respeta su duración real: inicio + dur no puede pasarse.
         real = idx[asset].get("duration")
         if kind == "video" and real:
-            dur = min(dur, float(real))
+            real = float(real)
+            if inicio >= real:
+                inicio = 0.0
+            dur = min(dur, max(1.0, real - inicio))
+        else:
+            inicio = 0.0  # las imágenes no tienen punto de inicio
         efecto = s.get("efecto") if s.get("efecto") in EFECTOS else (
             "kenburns" if kind == "image" else "none")
         trans = s.get("transicion") if s.get("transicion") in TRANSICIONES else "none"
         texto = (s.get("texto") or "").strip() or None
         segs.append({"asset": asset, "path": idx[asset]["path"], "kind": kind,
-                     "dur": round(dur, 2), "efecto": efecto,
-                     "transicion": trans, "texto": texto})
+                     "dur": round(dur, 2), "inicio": round(inicio, 2),
+                     "efecto": efecto, "transicion": trans, "texto": texto})
 
     if not segs:
         raise PlanError("El plan no tiene segmentos válidos (¿los archivos "
@@ -110,5 +115,6 @@ def resumen_legible(plan: dict) -> str:
     lines.append("Segmentos:")
     for i, s in enumerate(plan["segmentos"], 1):
         t = f' · texto: "{s["texto"]}"' if s["texto"] else ""
-        lines.append(f"  {i}. {s['asset']} ({s['kind']}) · {s['dur']}s · {s['efecto']}{t}")
+        ini = f' desde {s["inicio"]}s' if s.get("inicio") else ""
+        lines.append(f"  {i}. {s['asset']} ({s['kind']}){ini} · {s['dur']}s · {s['efecto']}{t}")
     return "\n".join(lines)

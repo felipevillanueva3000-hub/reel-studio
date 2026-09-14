@@ -13,9 +13,22 @@ import traceback
 
 import streamlit as st
 
-from src import config, storage, inventory, plan_brain, plan_schema, voice, subtitles, renderer
+# Puente de secrets -> variables de entorno. En Streamlit Community Cloud los
+# valores se cargan en st.secrets; los copiamos a os.environ para que el resto
+# del código (que lee os.environ, p. ej. GEMINI_API_KEY) los encuentre igual que
+# en local con .env. Debe correr ANTES de importar los módulos de src.
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, str):
+            os.environ.setdefault(_k, _v)
+except Exception:
+    pass
+
+from src import config, storage, inventory, plan_brain, plan_schema, voice, subtitles, renderer, auth
 
 st.set_page_config(page_title="reel-studio", page_icon="🎬", layout="centered")
+
+auth.require_password()  # no pide nada si APP_PASSWORD no está definida (local)
 
 store = storage.get_storage()
 ss = st.session_state
@@ -124,7 +137,8 @@ if ss.plan:
 
     import pandas as pd
     df = pd.DataFrame([
-        {"asset": s["asset"], "seg (dur)": s["dur"], "efecto": s["efecto"],
+        {"asset": s["asset"], "inicio (seg)": s.get("inicio", 0.0),
+         "seg (dur)": s["dur"], "efecto": s["efecto"],
          "texto": s["texto"] or "", "transición": s["transicion"]}
         for s in plan["segmentos"]
     ])
@@ -132,7 +146,9 @@ if ss.plan:
         df, use_container_width=True, num_rows="dynamic", key="editor",
         column_config={
             "asset": st.column_config.SelectboxColumn(options=media_assets, required=True),
-            "seg (dur)": st.column_config.NumberColumn(min_value=1.0, max_value=20.0, step=0.5),
+            "inicio (seg)": st.column_config.NumberColumn(
+                min_value=0.0, step=0.5, help="Segundo del clip donde empezar (videos)"),
+            "seg (dur)": st.column_config.NumberColumn(min_value=1.0, max_value=60.0, step=0.5),
             "efecto": st.column_config.SelectboxColumn(options=["kenburns", "none"]),
             "transición": st.column_config.SelectboxColumn(options=["fade", "none"]),
         },
@@ -153,7 +169,8 @@ if ss.plan:
             "musica": {"archivo": plan["musica"]["archivo"], "volumen": vol},
             "subtitulos": {"activo": subtitulos_on, "fuente": "auto"},
             "segmentos": [
-                {"asset": r["asset"], "dur": r["seg (dur)"], "efecto": r["efecto"],
+                {"asset": r["asset"], "inicio": r.get("inicio (seg)", 0),
+                 "dur": r["seg (dur)"], "efecto": r["efecto"],
                  "texto": r["texto"] or None, "transicion": r["transición"]}
                 for _, r in edited.iterrows() if r["asset"]
             ],

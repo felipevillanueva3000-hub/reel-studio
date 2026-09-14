@@ -10,10 +10,6 @@ import os
 import json
 import time
 
-from google import genai
-from google.genai import types
-from google.genai import errors
-
 from . import config
 
 
@@ -42,6 +38,11 @@ def build_plan(instrucciones: str, inventory: list,
     inventory: salida de inventory.build_inventory (assets reales disponibles).
     modo_voz: "voz_subida" | "tts" | "solo_musica" | "ninguno".
     """
+    # Import perezoso: si google-genai tuviera problemas, la app igual carga y el
+    # error solo aparece aquí (al generar), no al importar todo el proyecto.
+    from google import genai
+    from google.genai import types, errors
+
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     voz_tts = voz_tts or config.TTS_VOICE
 

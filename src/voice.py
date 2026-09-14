@@ -6,12 +6,11 @@ palabra) para poder generar subtítulos perfectamente sincronizados.
 """
 import asyncio
 
-import edge_tts
-
 from . import config
 
 
 async def _synth(text: str, out_path: str, voice: str):
+    import edge_tts
     boundaries = []
     communicate = edge_tts.Communicate(text, voice)
     with open(out_path, "wb") as f:

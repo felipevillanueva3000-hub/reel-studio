@@ -1,13 +1,3 @@
-"""Renderizador: ejecuta un PLAN validado y produce el reel .mp4 con FFmpeg.
-
-Evolución de tu video.py: en vez de un fondo plano, arma una secuencia de
-clips/fotos (con zoom lento tipo Ken Burns en las fotos), les pone rótulos,
-mezcla voz + música y quema los subtítulos.
-
-Diseño: primero normaliza CADA segmento a un mp4 idéntico (mismo códec, tamaño,
-fps) en el build dir; luego los concatena con '-c copy' (rápido y sin sorpresas);
-al final añade audio y subtítulos en un solo paso. Así es fácil de depurar.
-"""
 import os
 import subprocess
 
@@ -26,13 +16,17 @@ def _run(cmd, cwd=None):
 
 
 def _drawtext(texto: str, build_dir: str, idx: int) -> str:
-    """Escribe el texto a un archivo (evita el infierno de escapes) y devuelve
-    el fragmento de filtro drawtext que lo dibuja centrado abajo-centro."""
     txt_path = os.path.join(build_dir, f"txt_{idx}.txt")
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write(texto.upper())
+    fontfile = ""
     font = config.font_file()
-    fontfile = f"fontfile='{font}':" if font else ""
+    if font:
+        dst = os.path.join(build_dir, "font.ttf")
+        if not os.path.isfile(dst):
+            import shutil
+            shutil.copy2(font, dst)
+        fontfile = "fontfile=font.ttf:"
     return (
         f"drawtext={fontfile}textfile='txt_{idx}.txt':"
         f"fontcolor=white:fontsize=72:borderw=4:bordercolor=black@0.85:"
@@ -55,7 +49,6 @@ def _render_segment(seg: dict, build_dir: str, idx: int) -> str:
 
     if seg["kind"] == "image":
         if seg["efecto"] == "kenburns":
-            # Cubrir 9:16, subir resolución y aplicar zoom lento suave.
             chain.append(
                 f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
                 f"scale={W*2}:{H*2},"
@@ -98,10 +91,6 @@ def _concat(seg_files: list, build_dir: str) -> str:
 
 
 def _audio_graph(plan: dict, build_dir: str, voice_rel: str):
-    """Devuelve (inputs_extra, filtro_audio, tiene_audio).
-
-    voice_rel: nombre relativo (en build_dir) del mp3 de voz ya listo, o None.
-    """
     music = plan["musica"]
     music_path = music["path"]
     vol = music["volumen"]
@@ -116,7 +105,6 @@ def _audio_graph(plan: dict, build_dir: str, voice_rel: str):
         inputs += ["-i", music_path]
 
     if have_voice and have_music:
-        # video=0, voz=1, música=2
         filt = (f"[2:a]volume={vol},aloop=loop=-1:size=2e9[m];"
                 f"[1:a][m]amix=inputs=2:duration=longest:dropout_transition=0[a]")
     elif have_voice:
@@ -136,14 +124,11 @@ def render(plan: dict, build_dir: str, out_path: str,
     """
     os.makedirs(build_dir, exist_ok=True)
 
-    # 1) Normalizar cada segmento
     seg_files = [_render_segment(s, build_dir, i)
                  for i, s in enumerate(plan["segmentos"])]
 
-    # 2) Concatenar
     video_rel = _concat(seg_files, build_dir)
 
-    # 3) Preparar voz y subtítulos dentro de build_dir (nombres simples)
     voice_rel = None
     if voice_path and os.path.isfile(voice_path):
         voice_rel = "voice.mp3"
@@ -160,7 +145,6 @@ def render(plan: dict, build_dir: str, out_path: str,
             import shutil
             shutil.copy2(ass_path, dst)
 
-    # 4) Paso final: subtítulos (video) + mezcla de audio
     a_inputs, a_filt, have_audio = _audio_graph(plan, build_dir, voice_rel)
 
     fc_parts = []
@@ -178,14 +162,11 @@ def render(plan: dict, build_dir: str, out_path: str,
     cmd += ["-map", vmap]
     if have_audio:
         cmd += ["-map", "[a]", "-c:a", "aac", "-b:a", "192k"]
-    # Si aplicamos subtítulos re-encodeamos; si no, copiamos el video tal cual.
     if subs_rel:
         cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
                 "-pix_fmt", "yuv420p"]
     else:
         cmd += ["-c:v", "copy"]
-    # Corte de duración EXACTO (ya conocemos el total por el plan). Más robusto
-    # que -shortest cuando la música va en loop infinito.
     total = float(plan["duracion_total"])
     cmd += ["-t", f"{total:.2f}", "-movflags", "+faststart", "reel.mp4"]
     _run(cmd, cwd=build_dir)

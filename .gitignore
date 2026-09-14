@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/
+build/
+.streamlit/secrets.toml
+.env
+.env.example
+ESTADO_DEL_PROYECTO
+Dockerfile
+requirements
+docs

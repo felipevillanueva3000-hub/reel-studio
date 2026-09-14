@@ -8,6 +8,5 @@ build/
 .env
 .env.example
 ESTADO_DEL_PROYECTO
-Dockerfile
 requirements
 docs

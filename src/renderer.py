@@ -25,6 +25,19 @@ def _run(cmd, cwd=None):
     return p
 
 
+def _media_dur(path: str) -> float:
+    """Duración en segundos de un archivo (0 si falla)."""
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-of", "csv=p=0", path],
+            capture_output=True, text=True, check=True,
+        )
+        return float(out.stdout.strip())
+    except Exception:
+        return 0.0
+
+
 def _wrap(text: str, max_chars: int) -> list:
     """Parte el texto en líneas de <= max_chars (cortando por palabras)."""
     words = text.split()
@@ -225,34 +238,42 @@ def render(plan: dict, build_dir: str, out_path: str,
             import shutil
             shutil.copy2(ass_path, dst)
 
-    # 4) Paso final: subtítulos (video) + mezcla de audio
+    # 4) Paso final: subtítulos + mezcla de audio + CIERRE SUAVE (fundidos)
+    seg_total = float(plan["duracion_total"])
     a_inputs, a_filt, have_audio = _audio_graph(plan, build_dir, voice_rel)
 
-    fc_parts = []
+    # Si hay narración, que el video dure LO QUE DURA LA VOZ (+ cola corta) para
+    # que no se corte a media frase. Se congela el último cuadro para cubrirlo.
+    voice_dur = _media_dur(os.path.join(build_dir, voice_rel)) if voice_rel else 0.0
+    target = seg_total
+    if voice_dur and voice_dur + 0.6 > seg_total:
+        target = round(voice_dur + 0.6, 2)
+    pad = max(0.0, target - seg_total)
+
+    vchain = []
     if subs_rel:
-        fc_parts.append(f"[0:v]subtitles={subs_rel}[v]")
-        vmap = "[v]"
-    else:
-        vmap = "0:v"
+        vchain.append(f"subtitles={subs_rel}")
+    if pad > 0.05:
+        vchain.append(f"tpad=stop_mode=clone:stop_duration={pad:.2f}")
+    vchain.append("fade=t=in:st=0:d=0.5")
+    vchain.append(f"fade=t=out:st={max(0.0, target - 1.0):.2f}:d=1.0")
+    fc_parts = [f"[0:v]{','.join(vchain)}[v]"]
+    vmap = "[v]"
+
+    # Audio: mezcla + fundido de entrada/salida (evita el corte seco al final).
     if a_filt:
+        a_filt = a_filt.rsplit("[a]", 1)[0] + "[a0]"
+        a_filt += (f";[a0]afade=t=in:st=0:d=0.3,"
+                   f"afade=t=out:st={max(0.0, target - 1.0):.2f}:d=1.0[a]")
         fc_parts.append(a_filt)
 
-    cmd = ["ffmpeg", "-y", "-i", video_rel, *a_inputs]
-    if fc_parts:
-        cmd += ["-filter_complex", ";".join(fc_parts)]
-    cmd += ["-map", vmap]
+    cmd = ["ffmpeg", "-y", "-i", video_rel, *a_inputs,
+           "-filter_complex", ";".join(fc_parts), "-map", vmap]
     if have_audio:
         cmd += ["-map", "[a]", "-c:a", "aac", "-b:a", "192k"]
-    # Si aplicamos subtítulos re-encodeamos; si no, copiamos el video tal cual.
-    if subs_rel:
-        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-                "-pix_fmt", "yuv420p"]
-    else:
-        cmd += ["-c:v", "copy"]
-    # Corte de duración EXACTO (ya conocemos el total por el plan). Más robusto
-    # que -shortest cuando la música va en loop infinito.
-    total = float(plan["duracion_total"])
-    cmd += ["-t", f"{total:.2f}", "-movflags", "+faststart", "reel.mp4"]
+    cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-pix_fmt", "yuv420p",
+            "-t", f"{target:.2f}", "-movflags", "+faststart", "reel.mp4"]
     _run(cmd, cwd=build_dir)
 
     final_build = os.path.join(build_dir, "reel.mp4")

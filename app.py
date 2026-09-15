@@ -42,6 +42,7 @@ ss.setdefault("asset_paths", [])
 ss.setdefault("inventory", [])
 ss.setdefault("plan", None)
 ss.setdefault("out_path", None)
+ss.setdefault("uploader_key", 0)
 
 MODOS = {
     "Generar voz con IA": "tts",
@@ -71,6 +72,16 @@ MODELOS = [
 st.title("🎬 reel-studio")
 st.caption("Sube tu material, di qué quieres, revisa la propuesta y descarga tu reel.")
 
+if st.button("🆕 Nuevo reel (empezar de cero)"):
+    ss.asset_paths = []
+    ss.inventory = []
+    ss.plan = None
+    ss.out_path = None
+    ss.session_id = storage.new_session_id()
+    ss.uploader_key += 1          # reinicia los cargadores de archivos
+    ss.pop("editor", None)        # olvida la tabla de edición anterior
+    st.rerun()
+
 # ----------------------------------------------------------------------------
 # 1) Subir material
 # ----------------------------------------------------------------------------
@@ -79,12 +90,15 @@ media = st.file_uploader(
     "Fotos y videos (puedes subir varios)",
     type=["jpg", "jpeg", "png", "webp", "mp4", "mov", "m4v", "webm"],
     accept_multiple_files=True,
+    key=f"media_{ss.uploader_key}",
 )
 col_a, col_b = st.columns(2)
 with col_a:
-    voz_file = st.file_uploader("Tu voz (opcional)", type=["mp3", "wav", "m4a", "aac"])
+    voz_file = st.file_uploader("Tu voz (opcional)", type=["mp3", "wav", "m4a", "aac"],
+                                key=f"voz_{ss.uploader_key}")
 with col_b:
-    musica_file = st.file_uploader("Música (opcional)", type=["mp3", "wav", "m4a", "aac"])
+    musica_file = st.file_uploader("Música (opcional)", type=["mp3", "wav", "m4a", "aac"],
+                                   key=f"mus_{ss.uploader_key}")
 
 if st.button("Cargar material", use_container_width=True):
     paths = []
@@ -101,6 +115,7 @@ if st.button("Cargar material", use_container_width=True):
         ss.inventory = inventory.build_inventory(paths)
         ss.plan = None
         ss.out_path = None
+        ss.pop("editor", None)  # que no arrastre la tabla del reel anterior
         st.success(f"Cargados {len(paths)} archivos.")
 
 if ss.inventory:
@@ -157,6 +172,7 @@ if st.button("✨ Generar propuesta", type="primary", use_container_width=True,
                                             tono=tono, model=modelo)
                 ss.plan = plan_schema.normalize(raw, ss.inventory)
                 ss.out_path = None
+                ss.pop("editor", None)  # tabla fresca para la nueva propuesta
         except plan_brain.QuotaExhausted as e:
             st.error(
                 f"🚦 Se acabaron las consultas gratis de hoy con **{e.model_id}**. "

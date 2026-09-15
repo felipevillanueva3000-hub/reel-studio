@@ -25,8 +25,8 @@ def _run(cmd, cwd=None):
     return p
 
 
-def _wrap(text: str, max_chars: int = 20) -> str:
-    """Parte el texto en líneas de <= max_chars para que quepa a lo ancho."""
+def _wrap(text: str, max_chars: int) -> list:
+    """Parte el texto en líneas de <= max_chars (cortando por palabras)."""
     words = text.split()
     lines, cur = [], ""
     for w in words:
@@ -37,15 +37,36 @@ def _wrap(text: str, max_chars: int = 20) -> str:
             cur = w
     if cur:
         lines.append(cur)
-    return "\n".join(lines)
+    return lines
+
+
+def _fit_text(text: str, max_width_px: int = 900, max_lines: int = 3):
+    """Elige el tamaño de fuente MÁS GRANDE que haga caber el texto dentro de
+    max_width_px partiéndolo hasta en max_lines líneas. Devuelve (texto, fontsize).
+
+    Así el rótulo NUNCA se desborda: si es corto va grande en una línea; si es
+    largo, baja de tamaño y/o se parte en varias líneas hasta que cabe.
+    """
+    text = text.upper()
+    # 0.60 ≈ ancho medio por carácter respecto al tamaño de fuente (DejaVu Bold).
+    for fontsize in (66, 60, 54, 48, 42, 38):
+        max_chars = max(6, int(max_width_px / (fontsize * 0.60)))
+        lines = _wrap(text, max_chars)
+        longest = max((len(l) for l in lines), default=0)
+        if longest <= max_chars and len(lines) <= max_lines:
+            return "\n".join(lines), fontsize
+    # último recurso: fuente más chica y las líneas que hagan falta
+    fontsize = 34
+    max_chars = max(6, int(max_width_px / (fontsize * 0.60)))
+    return "\n".join(_wrap(text, max_chars)), fontsize
 
 
 def _drawtext(texto: str, build_dir: str, idx: int) -> str:
-    """Escribe el texto a un archivo (evita el infierno de escapes) y devuelve
-    el fragmento de filtro drawtext que lo dibuja centrado abajo-centro."""
+    """Escribe el texto (ya ajustado) a un archivo y devuelve el filtro drawtext."""
+    wrapped, fontsize = _fit_text(texto, max_width_px=900, max_lines=3)
     txt_path = os.path.join(build_dir, f"txt_{idx}.txt")
     with open(txt_path, "w", encoding="utf-8") as f:
-        f.write(_wrap(texto.upper(), max_chars=20))
+        f.write(wrapped)
     # La fuente se copia al build_dir y se referencia RELATIVA. Así evitamos que
     # una ruta absoluta de Windows (con ':' y '\') rompa el parser de filtros.
     fontfile = ""
@@ -58,7 +79,7 @@ def _drawtext(texto: str, build_dir: str, idx: int) -> str:
         fontfile = "fontfile=font.ttf:"
     return (
         f"drawtext={fontfile}textfile='txt_{idx}.txt':"
-        f"fontcolor=white:fontsize=58:borderw=4:bordercolor=black@0.85:"
+        f"fontcolor=white:fontsize={fontsize}:borderw=4:bordercolor=black@0.85:"
         f"box=1:boxcolor=black@0.35:boxborderw=22:"
         f"x=(w-text_w)/2:y=h*0.72:line_spacing=12"
     )

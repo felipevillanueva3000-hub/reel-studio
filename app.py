@@ -50,6 +50,16 @@ MODOS = {
     "Sin audio": "ninguno",
 }
 
+TONOS = {
+    "Experiencia personal": ("Cuéntalo como una experiencia que vivimos en primera "
+                             "persona (fuimos, vimos, la pasamos bien); cercano y "
+                             "auténtico, NADA promocional."),
+    "Informativo": ("Tono informativo y claro: explica qué es el lugar y qué se ve, "
+                    "con contexto."),
+    "Divertido / casual": ("Tono divertido, casual y con energía, ideal para redes."),
+    "Promoción / invitación": ("Tono que invita a visitar el lugar."),
+}
+
 st.title("🎬 reel-studio")
 st.caption("Sube tu material, di qué quieres, revisa la propuesta y descarga tu reel.")
 
@@ -106,11 +116,14 @@ if modo_voz == "tts":
         index=0,
     )
 
+estilo_label = st.selectbox("Estilo / tono", list(TONOS.keys()), index=0)
+tono = TONOS[estilo_label]
+
 instrucciones = st.text_area(
     "Explica el reel que quieres",
-    placeholder=("Ej: reel de ~30s sobre mi taller de repostería. Empieza con el "
-                 "clip del horno, luego 3 fotos de los pasteles. Pon el texto "
-                 "'PEDIDOS ABIERTOS' al final. Tono alegre. Con subtítulos."),
+    placeholder=("Ej: reel de nuestra visita al tianguis pirotécnico de "
+                 "Chimalhuacán. Empieza ubicando el lugar, muestra los puestos y "
+                 "el ambiente, y cierra bien. Con subtítulos."),
     height=130,
 )
 
@@ -124,7 +137,8 @@ if st.button("✨ Generar propuesta", type="primary", use_container_width=True,
         try:
             with st.spinner("La IA está armando la propuesta…"):
                 raw = plan_brain.build_plan(instrucciones, ss.inventory,
-                                            modo_voz=modo_voz, voz_tts=voz_tts)
+                                            modo_voz=modo_voz, voz_tts=voz_tts,
+                                            tono=tono)
                 ss.plan = plan_schema.normalize(raw, ss.inventory)
                 ss.out_path = None
         except plan_schema.PlanError as e:

@@ -5,6 +5,15 @@ funcione igual en local (con .env) que en Cloud Run (con secrets/vars).
 """
 import os
 
+# Carga automática de .env si existe (funciona en Windows/PowerShell, Mac y Linux;
+# ya no hace falta el 'export $(grep ...)' de bash). En Cloud Run no hay .env y
+# simplemente no hace nada: las variables llegan por --set-env-vars/--set-secrets.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 # --- Formato de salida ---
 WIDTH = int(os.environ.get("REEL_WIDTH", "1080"))
 HEIGHT = int(os.environ.get("REEL_HEIGHT", "1920"))

@@ -24,11 +24,16 @@ try:
 except Exception:
     pass
 
-from src import config, storage, inventory, plan_brain, plan_schema, voice, subtitles, renderer, auth
+from src import config, storage, inventory, plan_brain, plan_schema, voice, subtitles, renderer
+try:
+    from src import auth
+except Exception:
+    auth = None  # el candado de contraseña es opcional; si falta, la app abre igual
 
 st.set_page_config(page_title="reel-studio", page_icon="🎬", layout="centered")
 
-auth.require_password()  # no pide nada si APP_PASSWORD no está definida (local)
+if auth:
+    auth.require_password()  # no pide nada si APP_PASSWORD no está definida
 
 store = storage.get_storage()
 ss = st.session_state
@@ -148,7 +153,7 @@ if ss.plan:
             "asset": st.column_config.SelectboxColumn(options=media_assets, required=True),
             "inicio (seg)": st.column_config.NumberColumn(
                 min_value=0.0, step=0.5, help="Segundo del clip donde empezar (videos)"),
-            "seg (dur)": st.column_config.NumberColumn(min_value=1.0, max_value=60.0, step=0.5),
+            "seg (dur)": st.column_config.NumberColumn(min_value=1.0, max_value=300.0, step=0.5),
             "efecto": st.column_config.SelectboxColumn(options=["kenburns", "none"]),
             "transición": st.column_config.SelectboxColumn(options=["fade", "none"]),
         },

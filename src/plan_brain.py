@@ -89,14 +89,16 @@ Devuelve SOLO un objeto JSON válido (sin markdown ni texto extra) con esta form
 Reglas:
 - Usa SOLO nombres de esta lista: {nombres_validos}
 - La suma de los "dur" de los segmentos debe acercarse a "duracion_total".
-- DURACIÓN: no hagas cortes demasiado breves. Si un video dura varios segundos o
-  minutos, toma trozos generosos (p. ej. 6 a 20 s cada uno) para que se aprecie;
-  el reel puede durar de 20 s hasta 2 minutos si el material lo permite.
+- DURACIÓN: no hagas cortes demasiado breves. Ajusta la duración del reel al
+  MATERIAL y a lo que pida la usuaria: si tiene grabaciones largas y quiere un
+  reel largo, puede durar desde 20 s hasta ~5 minutos. Toma trozos generosos
+  (varios segundos cada uno) para que se aprecie el contenido.
 - "inicio": para cada VIDEO elige el segundo donde empieza lo más representativo
   (evita el arranque si suele ser preparación o cámara temblorosa); nunca pongas
   inicio + dur más allá de la duración real del clip. Para imágenes, inicio = 0.
-- Un mismo video puede usarse en VARIOS segmentos con distinto "inicio" para
-  mostrar diferentes momentos.
+- CORTAR/ADAPTAR: un mismo video largo puedes trocearlo en VARIOS segmentos con
+  distinto "inicio" y "dur" para usar solo los momentos que se piden, o recorrerlo
+  en orden. Usa lo que la usuaria pida (p. ej. "solo la parte del final").
 - Para imágenes usa efecto "kenburns" (zoom lento); para videos, "none".
 - "texto" breve (máx. 8 palabras), tipo rótulo; no en todos los segmentos.
 - Respeta el orden y las ideas que pidió la usuaria."""

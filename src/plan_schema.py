@@ -1,3 +1,10 @@
+"""Valida y normaliza el plan que devolvió la IA antes de renderizar.
+
+La IA se equivoca a veces (nombra un archivo que no existe, pone duraciones
+raras). Aquí lo dejamos SIEMPRE renderizable, o damos un error claro. También
+es lo que respalda el "modo aprobación": la app muestra este plan ya saneado y
+ella lo edita.
+"""
 from . import inventory as inv
 
 EFECTOS = ("kenburns", "none")
@@ -33,7 +40,7 @@ def normalize(plan: dict, inventory: list) -> dict:
             dur = float(dur)
         except (TypeError, ValueError):
             dur = 4.0
-        dur = max(1.0, min(dur, 60.0))
+        dur = max(1.0, min(dur, 300.0))
         # Punto de inicio dentro del clip (para quedarse con lo relevante).
         inicio = s.get("inicio", 0)
         try:

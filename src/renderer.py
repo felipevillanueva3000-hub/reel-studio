@@ -25,12 +25,27 @@ def _run(cmd, cwd=None):
     return p
 
 
+def _wrap(text: str, max_chars: int = 20) -> str:
+    """Parte el texto en líneas de <= max_chars para que quepa a lo ancho."""
+    words = text.split()
+    lines, cur = [], ""
+    for w in words:
+        if not cur or len(cur) + 1 + len(w) <= max_chars:
+            cur = (cur + " " + w).strip()
+        else:
+            lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
+    return "\n".join(lines)
+
+
 def _drawtext(texto: str, build_dir: str, idx: int) -> str:
     """Escribe el texto a un archivo (evita el infierno de escapes) y devuelve
     el fragmento de filtro drawtext que lo dibuja centrado abajo-centro."""
     txt_path = os.path.join(build_dir, f"txt_{idx}.txt")
     with open(txt_path, "w", encoding="utf-8") as f:
-        f.write(texto.upper())
+        f.write(_wrap(texto.upper(), max_chars=20))
     # La fuente se copia al build_dir y se referencia RELATIVA. Así evitamos que
     # una ruta absoluta de Windows (con ':' y '\') rompa el parser de filtros.
     fontfile = ""
@@ -43,9 +58,9 @@ def _drawtext(texto: str, build_dir: str, idx: int) -> str:
         fontfile = "fontfile=font.ttf:"
     return (
         f"drawtext={fontfile}textfile='txt_{idx}.txt':"
-        f"fontcolor=white:fontsize=72:borderw=4:bordercolor=black@0.85:"
-        f"box=1:boxcolor=black@0.35:boxborderw=24:"
-        f"x=(w-text_w)/2:y=h*0.70:line_spacing=10"
+        f"fontcolor=white:fontsize=58:borderw=4:bordercolor=black@0.85:"
+        f"box=1:boxcolor=black@0.35:boxborderw=22:"
+        f"x=(w-text_w)/2:y=h*0.72:line_spacing=12"
     )
 
 

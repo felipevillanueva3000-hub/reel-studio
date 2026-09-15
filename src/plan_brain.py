@@ -11,6 +11,7 @@ import json
 import time
 
 from . import config
+from . import inventory as inv_mod
 
 
 def _extract_json(text: str) -> dict:
@@ -49,10 +50,14 @@ def build_plan(instrucciones: str, inventory: list,
     archivos = _inventory_lines(inventory)
     nombres_validos = [it["file"] for it in inventory]
 
-    prompt = f"""Eres editor de video de reels verticales (9:16) en español de México.
-Tu trabajo es ORGANIZAR el material que la usuaria ya subió, siguiendo sus
-instrucciones. NO inventes archivos: solo puedes usar EXACTAMENTE estos nombres:
+    prompt = f"""Eres un editor PROFESIONAL de reels verticales (9:16) en español de México.
+Tu trabajo es ORGANIZAR el material que la usuaria ya subió y armar un reel con
+narrativa clara. NO inventes archivos: solo puedes usar EXACTAMENTE estos nombres:
 {archivos}
+
+MUY IMPORTANTE: después de estas instrucciones te muestro FOTOGRAMAS de cada clip.
+Míralos con atención para entender QUÉ se ve en cada uno (lugar, calle, letreros,
+personas, ambiente) y así ordenarlos con lógica y captar la esencia.
 
 Instrucciones de la usuaria:
 \"\"\"{instrucciones.strip()}\"\"\"
@@ -65,11 +70,11 @@ Modo de audio elegido: {modo_voz}
 
 Devuelve SOLO un objeto JSON válido (sin markdown ni texto extra) con esta forma:
 {{
-  "duracion_total": <número de segundos, 15 a 60>,
+  "duracion_total": <segundos totales, 15 a 300 según el material y lo pedido>,
   "audio": {{
     "tipo": "{modo_voz}",
     "archivo": "<nombre del audio de voz de la lista, o null>",
-    "guion": "<si tipo=tts: guion corto 60-110 palabras para narrar; si no: null>",
+    "guion": "<si tipo=tts: guion 60-160 palabras, coherente con lo que se ve; si no: null>",
     "voz_tts": "{voz_tts}"
   }},
   "musica": {{ "archivo": "<nombre de un audio de música de la lista, o null>", "volumen": 0.18 }},
@@ -77,38 +82,48 @@ Devuelve SOLO un objeto JSON válido (sin markdown ni texto extra) con esta form
   "segmentos": [
     {{
       "asset": "<nombre EXACTO de una imagen o video de la lista>",
-      "inicio": <para VIDEOS: segundo del clip donde empezar a tomar, para quedarte con lo relevante; para imágenes: 0>,
-      "dur": <segundos que dura este segmento>,
+      "inicio": <para VIDEOS: segundo donde empezar a tomar lo relevante; imágenes: 0>,
+      "dur": <segundos de este segmento>,
       "efecto": "kenburns" | "none",
-      "texto": "<texto corto para mostrar encima, o null>",
+      "texto": "<rótulo MUY corto, máx 4 palabras, o null>",
       "transicion": "fade" | "none"
     }}
   ]
 }}
 
-Reglas:
-- Usa SOLO nombres de esta lista: {nombres_validos}
-- La suma de los "dur" de los segmentos debe acercarse a "duracion_total".
-- DURACIÓN: no hagas cortes demasiado breves. Ajusta la duración del reel al
-  MATERIAL y a lo que pida la usuaria: si tiene grabaciones largas y quiere un
-  reel largo, puede durar desde 20 s hasta ~5 minutos. Toma trozos generosos
-  (varios segundos cada uno) para que se aprecie el contenido.
-- "inicio": para cada VIDEO elige el segundo donde empieza lo más representativo
-  (evita el arranque si suele ser preparación o cámara temblorosa); nunca pongas
-  inicio + dur más allá de la duración real del clip. Para imágenes, inicio = 0.
-- CORTAR/ADAPTAR: un mismo video largo puedes trocearlo en VARIOS segmentos con
-  distinto "inicio" y "dur" para usar solo los momentos que se piden, o recorrerlo
-  en orden. Usa lo que la usuaria pida (p. ej. "solo la parte del final").
-- Para imágenes usa efecto "kenburns" (zoom lento); para videos, "none".
-- "texto" breve (máx. 8 palabras), tipo rótulo; no en todos los segmentos.
-- Respeta el orden y las ideas que pidió la usuaria."""
+Reglas de un buen reel:
+- Usa SOLO estos nombres: {nombres_validos}
+- ORDEN CON SENTIDO (no al azar): empieza UBICANDO (el lugar, la calle o la
+  entrada), luego desarrolla el ambiente y lo interesante, y cierra con un buen
+  final. Decide el orden por lo que VES en los fotogramas.
+- ESENCIA: guion y rótulos deben describir lo que de verdad se ve. Si en un letrero
+  se lee una calle o el nombre del lugar, aprovéchalo al inicio ("Llegas por...").
+- DURACIÓN: ajústala al material y a lo pedido (de 20 s hasta ~5 min si hay
+  grabaciones largas). Trozos generosos, nada de cortes de 1-2 s.
+- "inicio": para cada VIDEO empieza en la parte buena (evita arranques
+  temblorosos); inicio + dur nunca más allá de la duración real del clip.
+- CORTAR/ADAPTAR: un video largo puedes trocearlo en varios segmentos con distinto
+  "inicio"/"dur" para usar solo lo mejor.
+- ROTULOS: MUY cortos (máx 4 palabras) para que quepan; no en todos los segmentos.
+- Para imágenes usa efecto "kenburns"; para videos "none"."""
+
+    # Multimodal: adjuntamos fotogramas de cada clip para que el modelo VEA el
+    # contenido. Si la extracción falla, sigue funcionando con solo texto.
+    contents = [prompt]
+    for it in inventory:
+        frames = inv_mod.sample_frames(it) if it.get("kind") in ("image", "video") else []
+        if frames:
+            d = f"{it.get('duration')}s" if it.get("duration") else "imagen"
+            contents.append(f"FOTOGRAMAS de «{it['file']}» ({it['kind']}, {d}):")
+            for fb in frames:
+                contents.append(types.Part.from_bytes(data=fb, mime_type="image/jpeg"))
 
     last = None
     for attempt in range(max_retries):
         try:
             resp = client.models.generate_content(
                 model=config.GEMINI_MODEL,
-                contents=prompt,
+                contents=contents,
                 config=types.GenerateContentConfig(
                     temperature=0.7,
                     response_mime_type="application/json",

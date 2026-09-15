@@ -13,6 +13,7 @@ VIDEO_EXTS = (".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv")
 AUDIO_EXTS = (".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac")
 
 FFPROBE = os.environ.get("FFPROBE_BIN", "ffprobe")
+FFMPEG = os.environ.get("FFMPEG_BIN", "ffmpeg")
 
 
 def _probe(path: str) -> dict:
@@ -63,3 +64,40 @@ def describe(path: str) -> dict:
 def build_inventory(paths: list) -> list:
     """Lista de dicts, uno por archivo, lista para pasársela a la IA."""
     return [describe(p) for p in paths]
+
+
+def sample_frames(item: dict, n: int = 3, width: int = 384) -> list:
+    """Extrae hasta n fotogramas (JPEG en bytes) de un asset, para que la IA
+    VEA el contenido. Videos: toma muestras repartidas en el tiempo. Imágenes:
+    una sola muestra. Si algo falla, regresa lista vacía (se sigue sin frames).
+    """
+    path, kind = item["path"], item["kind"]
+    if kind not in ("image", "video"):
+        return []
+
+    if kind == "image":
+        times = [None]
+    else:
+        dur = item.get("duration") or 0
+        if dur and dur > 1:
+            # muestras a ~20%, 50%, 80% de la duración
+            fracs = [0.2, 0.5, 0.8][:max(1, n)]
+            times = [round(dur * f, 2) for f in fracs]
+        else:
+            times = [0]
+
+    frames = []
+    for t in times:
+        cmd = [FFMPEG, "-v", "error"]
+        if t is not None:
+            cmd += ["-ss", f"{t}"]
+        cmd += ["-i", path, "-frames:v", "1",
+                "-vf", f"scale={width}:-1", "-f", "image2pipe",
+                "-vcodec", "mjpeg", "-"]
+        try:
+            out = subprocess.run(cmd, capture_output=True, check=True)
+            if out.stdout:
+                frames.append(out.stdout)
+        except Exception:
+            continue
+    return frames

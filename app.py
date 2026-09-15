@@ -60,6 +60,14 @@ TONOS = {
     "Promoción / invitación": ("Tono que invita a visitar el lugar."),
 }
 
+# Cada modelo tiene su PROPIA cuota gratis: si uno se agota, se cambia a otro.
+MODELOS = [
+    "gemini-3.6-flash",       # equilibrio calidad/costo (predeterminado)
+    "gemini-3.7-flash",       # el más capaz de la familia Flash
+    "gemini-3.5-flash-lite",  # más ligero y rápido, cuota aparte
+    "gemini-3.1-flash-lite",  # aún más ligero
+]
+
 st.title("🎬 reel-studio")
 st.caption("Sube tu material, di qué quieres, revisa la propuesta y descarga tu reel.")
 
@@ -127,6 +135,14 @@ instrucciones = st.text_area(
     height=130,
 )
 
+with st.expander("⚙️ Modelo de IA (cámbialo si se agota la cuota)"):
+    _def_idx = MODELOS.index(config.GEMINI_MODEL) if config.GEMINI_MODEL in MODELOS else 0
+    modelo = st.selectbox(
+        "Modelo", MODELOS, index=_def_idx,
+        help=("Cada modelo tiene su propia cuota gratis diaria. Si uno se agota, "
+              "elige otro (p. ej. gemini-3.5-flash-lite) y sigue trabajando."),
+    )
+
 if st.button("✨ Generar propuesta", type="primary", use_container_width=True,
              disabled=not ss.inventory):
     if not os.environ.get("GEMINI_API_KEY"):
@@ -138,9 +154,16 @@ if st.button("✨ Generar propuesta", type="primary", use_container_width=True,
             with st.spinner("La IA está armando la propuesta…"):
                 raw = plan_brain.build_plan(instrucciones, ss.inventory,
                                             modo_voz=modo_voz, voz_tts=voz_tts,
-                                            tono=tono)
+                                            tono=tono, model=modelo)
                 ss.plan = plan_schema.normalize(raw, ss.inventory)
                 ss.out_path = None
+        except plan_brain.QuotaExhausted as e:
+            st.error(
+                f"🚦 Se acabaron las consultas gratis de hoy con **{e.model_id}**. "
+                "Abre **⚙️ Modelo de IA** aquí arriba, elige otro "
+                "(por ejemplo **gemini-3.5-flash-lite**) y vuelve a darle a "
+                "**Generar propuesta**. Cada modelo tiene su propia cuota."
+            )
         except plan_schema.PlanError as e:
             st.error(f"La propuesta no era usable: {e}")
         except Exception as e:
